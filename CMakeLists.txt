@@ -8,17 +8,19 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/CMake)
 
 find_package(SDL REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(GLOG REQUIRED)
 find_package(GLEW REQUIRED)
 
 # Pour gérer un bug a la fac, a supprimer sur machine perso:
 #set(OPENGL_LIBRARIES /usr/lib/x86_64-linux-gnu/libGL.so.1)
 
-include_directories(${SDL_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} PartyKel/include third-party/AntTweakBar/include third-party/include)
+include_directories(${SDL_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} ${GLOG_INCLUDE_DIRS} PartyKel/include LuminolEngine/include third-party/AntTweakBar/include third-party/include)
 
+add_subdirectory(LuminolEngine)
 add_subdirectory(PartyKel)
 add_subdirectory(third-party/AntTweakBar)
 
-set(ALL_LIBRARIES PartyKel AntTweakBar ${SDL_LIBRARY} ${OPENGL_LIBRARIES} ${GLEW_LIBRARY})
+set(ALL_LIBRARIES PartyKel LuminolEngine AntTweakBar ${SDL_LIBRARY} ${OPENGL_LIBRARIES} ${GLEW_LIBRARY} ${GLOG_LIBRARIES})
 
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 

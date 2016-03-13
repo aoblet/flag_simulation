@@ -1,12 +1,16 @@
 #include <iostream>
 #include <cstdlib>
 
+#define GLM_FORCE_RADIANS
 #include <PartyKel/glm.hpp>
 #include <PartyKel/WindowManager.hpp>
+#include <glm/gtc/random.hpp>
 
 #include <PartyKel/renderer/FlagRenderer3D.hpp>
 #include <PartyKel/renderer/TrackballCamera.hpp>
 #include <PartyKel/atb.hpp>
+#include <PartyKel/Octree.h>
+#include <glog/logging.h>
 
 #include <vector>
 
@@ -182,6 +186,24 @@ struct Flag {
 };
 
 int main() {
+
+    Octree<float> octree(2, glm::vec3(0.f), glm::vec3(2.f));
+//    for(int i = 0; i < 10000; ++i){
+//        octree.add(glm::linearRand(0.f,1.f), glm::sphericalRand(1.f) * glm::linearRand(0.f,0.5f));
+//    }
+    octree.add(3.f, glm::vec3(0.99f));
+    octree.add(3.f, glm::vec3(0.99f));
+    octree.add(4.f, glm::vec3(0.99f));
+    octree.add(5.f, glm::vec3(0.99f));
+    octree.add(6.f, glm::vec3(0.99f));
+    octree.add(-3.f, glm::vec3(-0.99f));
+    octree.printRecursive();
+    octree.remove(3.f, glm::vec3(0.99f));
+    octree.printRecursive();
+    std::cout << std::endl;
+//    auto& dada = octree.get(glm::vec3(1.f));
+//    DLOG(INFO) << dada.size();
+
     WindowManager wm(WINDOW_WIDTH, WINDOW_HEIGHT, "Newton was a Geek");
     wm.setFramerate(30);
 
@@ -193,7 +215,10 @@ int main() {
     glm::vec3 G(0.f, -0.08, 0.f); // Gravité
 
     FlagRenderer3D renderer(flag.gridWidth, flag.gridHeight);
-    renderer.setProjMatrix(glm::perspective(70.f, float(WINDOW_WIDTH) / WINDOW_HEIGHT, 0.1f, 100.f));
+
+    glm::mat4 projection = glm::perspective(70.f, float(WINDOW_WIDTH) / WINDOW_HEIGHT, 0.1f, 100.f);
+
+    renderer.setProjMatrix(projection);
     TwBar* gui = TwNewBar("Parametres");
 
     float randomMoveScale = 0.01f;
@@ -223,6 +248,9 @@ int main() {
     // Temps s'écoulant entre chaque frame
     float dt = 0.f;
 
+    Graphics::ShaderProgram debugProgram("../shaders/debug.vert", "", "../shaders/debug.frag");
+
+
     bool done = false;
     bool wireframe = true;
     while(!done) {
@@ -232,6 +260,14 @@ int main() {
         renderer.clear();
         renderer.setViewMatrix(camera.getViewMatrix());
         renderer.drawGrid(flag.positionArray.data(), wireframe);
+
+        debugProgram.updateUniform("MVP", projection * camera.getViewMatrix());
+
+        octree.draw(debugProgram);
+        octree.drawRecursive(debugProgram);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 //         Simulation
         if(dt > 0.f) {
