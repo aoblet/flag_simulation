@@ -64,6 +64,10 @@ void Sphere::build(GLfloat r, GLsizei discLat, GLsizei discLong) {
             m_Vertices.push_back(data[offset + i + discLat + 1]);
         }
     }
+
+    for(auto& vertice: m_Vertices){
+        _positions.push_back(vertice.position);
+    }
 }
 
 }

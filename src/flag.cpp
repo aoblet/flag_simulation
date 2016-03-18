@@ -8,6 +8,8 @@
 
 #include <PartyKel/renderer/FlagRenderer3D.hpp>
 #include <PartyKel/renderer/TrackballCamera.hpp>
+#include <PartyKel/renderer/Renderer3D.hpp>
+#include <PartyKel/renderer/Sphere.hpp>
 #include <PartyKel/atb.hpp>
 #include <PartyKel/Octree.h>
 #include <glog/logging.h>
@@ -30,6 +32,13 @@ inline glm::vec3 hookForce(float K, float L, const glm::vec3& P1, const glm::vec
 // V est le paramètre du frein et dt le pas temporel
 inline glm::vec3 brakeForce(float V, float dt, const glm::vec3& v1, const glm::vec3& v2) {
     return V * ((v2-v1) / dt);
+}
+
+inline glm::vec3 sphereCollisionForce(float distanceToCenter, const glm::vec3& sphereCenter, float sphereRadius, const glm::vec3 particlePosition) {
+
+    glm::vec3 direction = glm::normalize(particlePosition - sphereCenter);
+
+    return direction * (1 / (1 + distanceToCenter));
 }
 
 // Structure permettant de simuler un drapeau à l'aide un système masse-ressort
@@ -169,8 +178,30 @@ struct Flag {
             forceArray[i] += F;
         }
 
-        forceArray[nbParticles - gridWidth] = glm::vec3(0);
-        forceArray[nbParticles-1] = glm::vec3(0);
+//        forceArray[nbParticles - gridWidth] = glm::vec3(0);
+//        forceArray[nbParticles-1] = glm::vec3(0);
+
+    }
+
+    void applySphereCollision(const SphereHandler& sphereHandler, float multiplier) {
+
+        for(int i = 0; i < nbParticles; ++i){
+            if( (i%gridWidth) == 0)
+                continue;
+
+            for(size_t j = 0; j < sphereHandler.positions.size(); ++j){
+                float dist = glm::distance(sphereHandler.positions[j], positionArray[i]);
+                if(dist < sphereHandler.radius[j]){
+//                    DLOG(INFO) << "COLLISION";
+//                    DLOG(INFO) << dist;
+//                    DLOG(INFO) << sphereHandler.radius[j];
+                    forceArray[i] += sphereCollisionForce(dist, sphereHandler.positions[j], sphereHandler.radius[j], positionArray[i]) * multiplier;
+                }
+            }
+        }
+
+//        forceArray[nbParticles - gridWidth] = glm::vec3(0);
+//        forceArray[nbParticles-1] = glm::vec3(0);
 
     }
 
@@ -187,22 +218,15 @@ struct Flag {
 
 int main() {
 
-    Octree<float> octree(2, glm::vec3(0.f), glm::vec3(2.f));
-//    for(int i = 0; i < 10000; ++i){
-//        octree.add(glm::linearRand(0.f,1.f), glm::sphericalRand(1.f) * glm::linearRand(0.f,0.5f));
-//    }
-    octree.add(3.f, glm::vec3(0.99f));
-    octree.add(3.f, glm::vec3(0.99f));
-    octree.add(4.f, glm::vec3(0.99f));
-    octree.add(5.f, glm::vec3(0.99f));
-    octree.add(6.f, glm::vec3(0.99f));
-    octree.add(-3.f, glm::vec3(-0.99f));
-    octree.printRecursive();
-    octree.remove(3.f, glm::vec3(0.99f));
-    octree.printRecursive();
-    std::cout << std::endl;
-//    auto& dada = octree.get(glm::vec3(1.f));
-//    DLOG(INFO) << dada.size();
+    SphereHandler sphereHandler;
+    sphereHandler.colors = {glm::vec3(1, 0, 0)};
+    sphereHandler.positions = {glm::vec3(0, 0, 0)};
+    sphereHandler.radius = {0.5};
+    float sphereCollisionMultiplier = 0.01;
+
+    DLOG(INFO) << sphereHandler.positions.size();
+    DLOG(INFO) << sphereHandler.radius.size();
+
 
     WindowManager wm(WINDOW_WIDTH, WINDOW_HEIGHT, "Newton was a Geek");
     wm.setFramerate(30);
@@ -230,6 +254,11 @@ int main() {
     atb::addVarRW(gui, ATB_VAR(flag.V0), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.V1), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.V2), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(sphereCollisionMultiplier), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(sphereHandler.radius[0]), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].x), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].y), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].z), "step=0.01");
 
     atb::addButton(gui, "reset", [&]() {
         Flag tmp(4096.f, 2, 1.5, 32, 16); // Création d'un drapeau
@@ -250,6 +279,8 @@ int main() {
 
     Graphics::ShaderProgram debugProgram("../shaders/debug.vert", "", "../shaders/debug.frag");
 
+    Renderer3D renderer3D;
+    renderer3D.setProjMatrix(projection);
 
     bool done = false;
     bool wireframe = true;
@@ -259,21 +290,24 @@ int main() {
         // Rendu
         renderer.clear();
         renderer.setViewMatrix(camera.getViewMatrix());
+        renderer3D.setViewMatrix(camera.getViewMatrix());
         renderer.drawGrid(flag.positionArray.data(), wireframe);
 
         debugProgram.updateUniform("MVP", projection * camera.getViewMatrix());
 
-        octree.draw(debugProgram);
-        octree.drawRecursive(debugProgram);
-        glBindVertexArray(0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        renderer3D.drawParticles(sphereHandler.positions.size(), sphereHandler.positions.data(), sphereHandler.radius.data(), sphereHandler.colors.data(), 1);
+//        octree.draw(debugProgram);
+//        octree.drawRecursive(debugProgram);
+//        glBindVertexArray(0);
+//        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+//        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 //         Simulation
         if(dt > 0.f) {
             flag.applyExternalForce(G); // Applique la gravité
             flag.applyExternalForce(glm::sphericalRand(0.04f)); // Applique un "vent" de direction aléatoire et de force 0.1 Newtons
             flag.applyInternalForces(dt); // Applique les forces internes
+            flag.applySphereCollision(sphereHandler, sphereCollisionMultiplier);
             flag.update(dt); // Mise à jour du système à partir des forces appliquées
         }
 
@@ -293,6 +327,10 @@ int main() {
                 case SDL_KEYDOWN:
                     if(e.key.keysym.sym == SDLK_SPACE) {
                         wireframe = !wireframe;
+                    }
+                    if(e.key.keysym.sym == SDLK_ESCAPE) {
+                        done = true;
+                        break;
                     }
                 case SDL_MOUSEBUTTONDOWN:
                     if(e.button.button == SDL_BUTTON_WHEELUP) {

@@ -49,7 +49,7 @@ Renderer3D::Renderer3D():
     glGenBuffers(1, &m_SphereVBOID);
     glBindBuffer(GL_ARRAY_BUFFER, m_SphereVBOID);
 
-    Sphere sphere(1.f, 64, 32);
+    Sphere sphere(1.f, 32, 32);
     m_nSphereVertexCount = sphere.getVertexCount();
 
     glBufferData(GL_ARRAY_BUFFER, m_nSphereVertexCount * sizeof(Sphere::Vertex), sphere.getDataPointer(), GL_STATIC_DRAW);

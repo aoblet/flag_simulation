@@ -18,6 +18,8 @@ public:
         glm::vec3 normal;
     };
 
+    std::vector<glm::vec3> _positions;
+
     // Constructeur: alloue le tableau de données et construit les attributs des vertex
     Sphere(GLfloat radius, GLsizei discLat, GLsizei discLong):
         m_nVertexCount(0) {
@@ -28,7 +30,7 @@ public:
     const Vertex* getDataPointer() const {
         return &m_Vertices[0];
     }
-    
+
     // Renvoit le nombre de vertex
     GLsizei getVertexCount() const {
         return m_nVertexCount;
@@ -37,6 +39,12 @@ public:
 private:
     std::vector<Vertex> m_Vertices;
     GLsizei m_nVertexCount; // Nombre de sommets
+};
+
+struct SphereHandler{
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> colors;
+    std::vector<float> radius;
 };
     
 }
