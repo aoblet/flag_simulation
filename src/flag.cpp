@@ -28,7 +28,9 @@ inline glm::vec3 hookForce(float K, float L, const glm::vec3& P1, const glm::vec
 }
 
 inline glm::vec3 repulseForce(float dst, const glm::vec3& P1, const glm::vec3& P2) {
-    return 1.f - glm::normalize(P1 - P2) * dst ;
+//    return 1.f - glm::normalize(P1 - P2) * dst ;
+    glm::vec3 direction = glm::normalize(P1 - P2);
+    return direction * (1 / (1 + glm::pow(dst, 1.f)));
 }
 
 
@@ -41,8 +43,7 @@ inline glm::vec3 brakeForce(float V, float dt, const glm::vec3& v1, const glm::v
 inline glm::vec3 sphereCollisionForce(float distanceToCenter, const glm::vec3& sphereCenter, float sphereRadius, const glm::vec3 particlePosition) {
 
     glm::vec3 direction = glm::normalize(particlePosition - sphereCenter);
-
-    return direction * (1 / (1 + distanceToCenter));
+    return direction * (1 / (1 + glm::pow(distanceToCenter, 1.f)));
 }
 
 // Structure permettant de simuler un drapeau à l'aide un système masse-ressort
@@ -199,12 +200,9 @@ struct Flag {
             forceArray[i] += F;
         }
 
-//        forceArray[nbParticles - gridWidth] = glm::vec3(0);
-//        forceArray[nbParticles-1] = glm::vec3(0);
-
     }
 
-    void applySphereCollision(const SphereHandler& sphereHandler, float multiplier) {
+    void applySphereCollision(const SphereHandler& sphereHandler, float multiplier, float radiusDelta) {
 
         for(int i = 0; i < nbParticles; ++i){
             if( (i%gridWidth) == 0)
@@ -212,18 +210,11 @@ struct Flag {
 
             for(size_t j = 0; j < sphereHandler.positions.size(); ++j){
                 float dist = glm::distance(sphereHandler.positions[j], positionArray[i]);
-                if(dist < sphereHandler.radius[j]){
-//                    DLOG(INFO) << "COLLISION";
-//                    DLOG(INFO) << dist;
-//                    DLOG(INFO) << sphereHandler.radius[j];
+                if(dist < sphereHandler.radius[j] + radiusDelta){
                     forceArray[i] += sphereCollisionForce(dist, sphereHandler.positions[j], sphereHandler.radius[j], positionArray[i]) * multiplier;
                 }
             }
         }
-
-//        forceArray[nbParticles - gridWidth] = glm::vec3(0);
-//        forceArray[nbParticles-1] = glm::vec3(0);
-
     }
 
     // Met à jour la vitesse et la position de chaque point du drapeau
@@ -240,10 +231,11 @@ struct Flag {
 int main() {
 
     SphereHandler sphereHandler;
-    sphereHandler.colors = {glm::vec3(1, 0, 0)};
-    sphereHandler.positions = {glm::vec3(0, 0, 0)};
-    sphereHandler.radius = {0.5};
-    float sphereCollisionMultiplier = 0.01;
+    sphereHandler.colors = {glm::vec3(1, 0, 0), glm::vec3(0, 1, 0)};
+    sphereHandler.positions = {glm::vec3(0, -2, 0.5), glm::vec3(0, -3, 0)};
+    sphereHandler.radius = {0.5, 0.2};
+    float sphereCollisionMultiplier = 1;
+    float radiusDelta = 0.2;
 
     WindowManager wm(WINDOW_WIDTH, WINDOW_HEIGHT, "Newton was a Geek");
     wm.setFramerate(30);
@@ -271,15 +263,17 @@ int main() {
     atb::addVarRW(gui, ATB_VAR(flag.K0), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.K1), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.K2), "step=0.01");
-
     atb::addVarRW(gui, ATB_VAR(flag.V0), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.V1), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(flag.V2), "step=0.01");
+
     atb::addVarRW(gui, ATB_VAR(sphereCollisionMultiplier), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.radius[0]), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].x), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].y), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].z), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(radiusDelta), "step=0.01");
+
     atb::addVarRW(gui, ATB_VAR(displayOctree));
     atb::addVarRW(gui, ATB_VAR(maxDstRepulseForce), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(multRepulseForce), "step=0.01");
@@ -320,13 +314,7 @@ int main() {
         renderer.drawGrid(flag.positionArray.data(), wireframe);
 
         debugProgram.updateUniform("MVP", projection * camera.getViewMatrix());
-
         renderer3D.drawParticles(sphereHandler.positions.size(), sphereHandler.positions.data(), sphereHandler.radius.data(), sphereHandler.colors.data(), 1);
-//        octree.draw(debugProgram);
-//        octree.drawRecursive(debugProgram);
-//        glBindVertexArray(0);
-//        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-//        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         // Simulation
         if(dt > 0.f) {
@@ -334,7 +322,7 @@ int main() {
             flag.applyExternalForce(G); // Applique la gravité
             flag.applyExternalForce(glm::sphericalRand(0.05f)); // Applique un "vent" de direction aléatoire et de force 0.1 Newtons
             flag.applyInternalForces(dt); // Applique les forces internes
-            flag.applySphereCollision(sphereHandler, sphereCollisionMultiplier);
+            flag.applySphereCollision(sphereHandler, sphereCollisionMultiplier, radiusDelta);
 
 
             for(auto& pos : flag.positionArray)
