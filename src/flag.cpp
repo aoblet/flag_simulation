@@ -1,7 +1,6 @@
 #include <iostream>
 #include <cstdlib>
 
-#define GLM_FORCE_RADIANS
 #include <PartyKel/glm.hpp>
 #include <PartyKel/WindowManager.hpp>
 #include <glm/gtc/random.hpp>
@@ -27,6 +26,11 @@ inline glm::vec3 hookForce(float K, float L, const glm::vec3& P1, const glm::vec
     static const float epsilon = 0.0001;
     return K * (1-(L/std::max(glm::distance(P1, P2), epsilon))) * (P2 - P1);
 }
+
+inline glm::vec3 repulseForce(float dst, const glm::vec3& P1, const glm::vec3& P2) {
+    return 1.f - glm::normalize(P1 - P2) * dst ;
+}
+
 
 // Calcule une force de type frein cinétique entre deux particules de vélocités v1 et v2
 // V est le paramètre du frein et dt le pas temporel
@@ -92,17 +96,9 @@ struct Flag {
         L2 = 2.f * L0;
 
         // Ces paramètres sont à fixer pour avoir un système stable: HAVE FUN !
-//        K0 = 1.f;
-//        K1 = 1.f;
-//        K2 = 1.f;
-//
-//        V0 = 0.1f;
-//        V1 = 0.1f;
-//        V2 = 0.1f;
-
         K0 = 1;
-        K1 = 1.3;
-        K2 = 0.8;
+        K1 = 1;
+        K2 = 1;
 
         V0 = 0.08;
         V1 = 0.02;
@@ -112,11 +108,12 @@ struct Flag {
     // Applique les forces internes sur chaque point du drapeau SAUF les points fixes
     void applyInternalForces(float dt) {
         std::vector<glm::ivec2> neighbors(4);
-        for(int i = 1; i<gridWidth; ++i){
-            for(int j = 0; j<gridHeight; ++j){
+        for(int i = 0; i<gridWidth; ++i){
+            for(int j = 1; j<gridHeight; ++j){
                 int currentK = j*gridWidth + i;
 //                if(currentK == nbParticles-1 || currentK == nbParticles - gridWidth)
 //                    continue;
+
                 // TOPOLOGY 1
                 neighbors[0] = glm::ivec2(i+1, j);
                 neighbors[1] = glm::ivec2(i-1, j);
@@ -167,14 +164,38 @@ struct Flag {
         }
     }
 
+    void applyRepulseForces(Octree<glm::vec3>& octree, float maxDst, float multRepulse){
+        for(int i = 0; i<gridWidth; ++i) {
+            for (int j = 1; j < gridHeight; ++j) {
+                int k = j*gridWidth + i;
+                auto& pos = positionArray[k];
+
+                auto &inSameVoxel = octree.get(pos);
+                assert(!inSameVoxel.empty());
+
+                if (inSameVoxel.size() < 2)
+                    continue;
+
+                for (auto &v : inSameVoxel) {
+                    float dst = glm::distance(v, pos);
+                    if (dst > maxDst || pos == v)
+                        continue;
+
+                    forceArray[k] += repulseForce(dst, pos, v) * multRepulse;
+                }
+            }
+        }
+    }
+
+
     // Applique une force externe sur chaque point du drapeau SAUF les points fixes
     void applyExternalForce(const glm::vec3& F) {
 
         for(int i = 0; i < nbParticles; ++i){
-            if( (i%gridWidth) == 0)
-                continue;
-//            if(i<gridWidth)
+//            if( (i%gridWidth) == 0)
 //                continue;
+            if(i<gridWidth)
+                continue;
             forceArray[i] += F;
         }
 
@@ -224,10 +245,6 @@ int main() {
     sphereHandler.radius = {0.5};
     float sphereCollisionMultiplier = 0.01;
 
-    DLOG(INFO) << sphereHandler.positions.size();
-    DLOG(INFO) << sphereHandler.radius.size();
-
-
     WindowManager wm(WINDOW_WIDTH, WINDOW_HEIGHT, "Newton was a Geek");
     wm.setFramerate(30);
 
@@ -235,10 +252,14 @@ int main() {
     TwInit(TW_OPENGL, NULL);
     TwWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    Flag flag(4096.f, 2, 1.5, 32, 16); // Création d'un drapeau
+    Flag flag(4096.f, 2, 1.5, 16, 16); // Création d'un drapeau
     glm::vec3 G(0.f, -0.08, 0.f); // Gravité
+    float maxDstRepulseForce = 0.1;
+    float multRepulseForce = 0;
+    bool displayOctree = true;
 
     FlagRenderer3D renderer(flag.gridWidth, flag.gridHeight);
+    Octree<glm::vec3> octree(7, glm::vec3(0,-10,0), glm::vec3(50.f));
 
     glm::mat4 projection = glm::perspective(70.f, float(WINDOW_WIDTH) / WINDOW_HEIGHT, 0.1f, 100.f);
 
@@ -259,9 +280,12 @@ int main() {
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].x), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].y), "step=0.01");
     atb::addVarRW(gui, ATB_VAR(sphereHandler.positions[0].z), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(displayOctree));
+    atb::addVarRW(gui, ATB_VAR(maxDstRepulseForce), "step=0.01");
+    atb::addVarRW(gui, ATB_VAR(multRepulseForce), "step=0.01");
 
     atb::addButton(gui, "reset", [&]() {
-        Flag tmp(4096.f, 2, 1.5, 32, 16); // Création d'un drapeau
+        Flag tmp(4096.f, 2, 1.5, 16, 16); // Création d'un drapeau
         tmp.K0 = flag.K0;
         tmp.K1 = flag.K1;
         tmp.K2 = flag.K2;
@@ -281,6 +305,8 @@ int main() {
 
     Renderer3D renderer3D;
     renderer3D.setProjMatrix(projection);
+
+    FLAGS_minloglevel = 1;
 
     bool done = false;
     bool wireframe = true;
@@ -302,14 +328,36 @@ int main() {
 //        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 //        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-//         Simulation
+        // Simulation
         if(dt > 0.f) {
+
             flag.applyExternalForce(G); // Applique la gravité
-            flag.applyExternalForce(glm::sphericalRand(0.04f)); // Applique un "vent" de direction aléatoire et de force 0.1 Newtons
+            flag.applyExternalForce(glm::sphericalRand(0.05f)); // Applique un "vent" de direction aléatoire et de force 0.1 Newtons
             flag.applyInternalForces(dt); // Applique les forces internes
             flag.applySphereCollision(sphereHandler, sphereCollisionMultiplier);
+
+
+            for(auto& pos : flag.positionArray)
+                octree.add(pos, pos);
+
+            flag.applyRepulseForces(octree, maxDstRepulseForce, multRepulseForce);
+
+
+            if(displayOctree){
+                octree.draw(debugProgram);
+                octree.drawRecursive(debugProgram);
+                glBindVertexArray(0);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+
+            for(auto& pos : flag.positionArray)
+                octree.remove(pos, pos);
+
             flag.update(dt); // Mise à jour du système à partir des forces appliquées
         }
+
+
 
         TwDraw();
 

@@ -195,6 +195,7 @@ namespace PartyKel
             return;
         }
 
+
         if(contains(position)){
             initChildren();
             for(auto& octree : _children){
@@ -204,7 +205,6 @@ namespace PartyKel
                 }
             }
         }
-
         std::string error = "Trying to add object at " + glm::to_string(position);
         error += " which is out of bounds of octree ( position = " + glm::to_string(_position);
         error += ", dimension = " + glm::to_string(_dimension) + " )";
@@ -251,8 +251,7 @@ namespace PartyKel
         }
 
         if(!_initChildren){
-            std::vector<T> empty;
-            return empty;
+            return _values;
         }
 
         if(contains(position)){
@@ -355,7 +354,7 @@ namespace PartyKel
                 child.printRecursive();
             }
         }
-        std::cout << _depth << std::endl;
+//        std::cout << _depth << std::endl;
     }
 }
 
